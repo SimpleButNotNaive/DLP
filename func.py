@@ -1,5 +1,52 @@
 import random
-import args
+
+def calc_factors(num):
+    factors = {}
+
+    while num != 1:
+        one_factor = calc_one_factor(num)
+        factors[one_factor] = factors.get(one_factor, 0) + 1
+        num = num // one_factor
+    return factors
+
+def calc_one_factor(num):
+    sq_root = int(num**(1/2) + 1)
+    for i in range(2, sq_root):
+        if (num % i) == 0:
+            return i
+    return num
+
+def calc_inverse(n, ele):
+    a = n
+    b = ele % n
+    t_0 = 0
+    t = 1
+    q = a // b
+    r = a % b
+    while r > 0:
+        temp = (t_0 - q*t) % n
+        t_0 = t
+        t = temp
+        a = b
+        b = r
+        q = a // b
+        r = a % b
+    if b != 1:
+        raise ValueError(b, t)
+        # 如果算法失败则有b = t*ele + kn
+        # b是最大公因数，t是方程的一个特解
+    return t
+
+
+def modular_exponent(a, b, n):
+    mask = 1
+    result = 1
+    while mask <= b:
+        if mask & b:
+            result = (result * a) % n
+        a = (a * a) % n
+        mask = mask << 1
+    return result
 
 
 class pollard_algorithm:
@@ -22,44 +69,11 @@ class pollard_algorithm:
     def func(self, x, a, b):
         return self.func_list[x % 3](x, a, b)
 
-    @staticmethod
-    def calc_inverse(n, ele):
-        a = n
-        b = ele % n
-        t_0 = 0
-        t = 1
-        q = a // b
-        r = a % b
-        while r > 0:
-            temp = (t_0 - q*t) % n
-            t_0 = t
-            t = temp
-            a = b
-            b = r
-            q = a // b
-            r = a % b
-        if b != 1:
-            raise ValueError(b, t)
-            # 如果算法失败则有b = t*ele + kn
-            # b是最大公因数，t是方程的一个特解
-        return t
-
-    @staticmethod
-    def modular_exponent(a, b, n):
-        mask = 1
-        result = 1
-        while mask <= b:
-            if mask & b:
-                result = (result * a) % n
-            a = (a * a) % n
-            mask = mask << 1
-        return result
-
     def check_solve(self, x_0, d):
         for i in range(d):
             x = (x_0 + self.n // d * i) % self.n
             # 遍历d个可能的解
-            if pollard_algorithm.modular_exponent(self.alpha, x, self.p) == self.beta:
+            if modular_exponent(self.alpha, x, self.p) == self.beta:
                 return x
         raise ValueError("算法失败")
 
@@ -68,8 +82,8 @@ class pollard_algorithm:
         while not inv:
             init_a = random.randint(0, self.n)
             init_b = random.randint(0, self.n)
-            init_x = pollard_algorithm.modular_exponent(
-                self.alpha, init_a, self.p)*pollard_algorithm.modular_exponent(self.beta, init_b, self.p) % self.p
+            init_x = modular_exponent(
+                self.alpha, init_a, self.p)*modular_exponent(self.beta, init_b, self.p) % self.p
 
             tuple_1 = self.func(init_x, init_a, init_b)
             tuple_2 = self.func(*tuple_1)
@@ -86,7 +100,7 @@ class pollard_algorithm:
             b_2i = tuple_2[2]
 
             try:
-                inv = pollard_algorithm.calc_inverse(self.n, b_2i - b_i)
+                inv = calc_inverse(self.n, b_2i - b_i)
             except ValueError as v_error:
                 (d, c_0) = v_error.args
                 if d < 1000:
@@ -96,16 +110,57 @@ class pollard_algorithm:
         return (a_i - a_2i)*inv % self.n
 
 
-if __name__ == "__main__":
-    p = pollard_algorithm(args.g, args.ya, args.ord_g, args.p)
-    solution = p.solve()
-    print(pollard_algorithm.modular_exponent(args.g, solution, args.p))
-    print(args.ya)
+class Pohlig_Hellman_algorithm:
+    def __init__(self, factors: dict, alpha, beta, n, p):
+        self.factors = factors
+        self.alpha = alpha
+        self.beta = beta
+        self.n = n
+        self.p = p
 
-    p = pollard_algorithm(args.g, args.yb, args.ord_g, args.p)
-    solution2 = p.solve()
-    print(pollard_algorithm.modular_exponent(args.g, solution2, args.p))
-    print(args.yb)
+    def solve_one_factor(self, q, c):
+        j = 0
+        beta_j = self.beta
+        numbers = []
+        while j <= c - 1:
+            sigma = modular_exponent(beta_j, self.n // (q ** (j + 1)), self.p)
+            alpha = modular_exponent(self.alpha, (self.n // q), self.p)
 
-    print(pollard_algorithm.modular_exponent(args.ya, solution2, args.p))
-    print(pollard_algorithm.modular_exponent(args.yb, solution, args.p))
+            if q > 1000:
+                solver = pollard_algorithm(alpha, sigma, q, self.p)
+                a_j = solver.solve()
+            else:
+                for i in range(q):
+                    if modular_exponent(alpha, i, self.p) == sigma:
+                        a_j = i
+                        break
+
+            alpha_inv = calc_inverse(self.p, self.alpha)
+            beta_j = (beta_j * modular_exponent(alpha_inv, a_j*(q**j), self.p)) % self.p
+            j += 1
+            numbers.append(a_j)
+
+        walker = 1
+        ret = 0
+        for num in numbers:
+            ret += walker*num
+            walker = walker * q
+
+        return ret
+
+    def solve(self):
+        M_i = []
+        y_i = []
+        a_i = []
+        for (factor, power) in self.factors.items():
+            the_M_i = self.n // (factor ** power)
+            M_i.append(the_M_i)
+            y_i.append(calc_inverse(factor ** power, the_M_i))
+            a_i.append(self.solve_one_factor(factor, power))
+
+        result = 0
+        for (a, M, y) in zip(a_i, M_i, y_i):
+            result += a*M*y
+            result %= self.n
+
+        return result
