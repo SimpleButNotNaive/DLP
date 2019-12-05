@@ -78,8 +78,8 @@ class pollard_algorithm:
         raise ValueError("算法失败")
 
     def solve(self):
-        inv = None
-        while not inv:
+        a_inv = None
+        while not a_inv:
             init_a = random.randint(0, self.n)
             init_b = random.randint(0, self.n)
             init_x = modular_exponent(
@@ -99,15 +99,19 @@ class pollard_algorithm:
             b_i = tuple_1[2]
             b_2i = tuple_2[2]
 
+            a = b_2i - b_i
+            b = a_i - a_2i
+            # 统一参数名称，求解同余方程ax = b(mod n)
+
             try:
-                inv = calc_inverse(self.n, b_2i - b_i)
+                a_inv = calc_inverse(self.n, a)
             except ValueError as v_error:
-                (d, c_0) = v_error.args
+                (d, x_0) = v_error.args
+                # d为gcd(a, n)，x_0为方程ax = d的一个特解
                 if d < 1000:
-                    # d是gcd(b_2i - b_i, n)，c_0是方程c * (b_2i - b_i) + y*n = d的一个特解
-                    return self.check_solve(c_0 * (a_i - a_2i) // d, d)
-                    # 乘以(a_i - a_2i) // d获得方程c * (b_2i - b_i) + y*n = (a_i - a_2i)的一个特解
-        return (a_i - a_2i)*inv % self.n
+                    return self.check_solve(x_0 * b // d, d)
+                    # x_0 * b//d是原方程的一个特解
+        return b*a_inv % self.n
 
 
 class Pohlig_Hellman_algorithm:
